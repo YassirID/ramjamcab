@@ -125,22 +125,8 @@ if (isset($_SESSION['error'])) {
     </style>
 </head>
 <body class="font-sans bg-gray-100 flex h-screen">
- <div class="sidebar bg-gray-800 text-white w-64 space-y-6 py-7 px-2 fixed inset-y-0 left-0">
-     <a href="">
-        <img src="../src/img/GRAPHIC.png" alt="Logo Raimuna Cabang Cimahi" class="w-48 mx-auto mb-6">
-    </a>
-    <nav>
-        <ul class="space-y-2">
-            <li><a href="dashboard_<?php echo $role; ?>.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Dashboard</a></li>
-            <li><a href="data_berkas_kontingen.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Berkas Kontingen</a></li>
-            <li><a href="data_unsur_kontingen.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Unsur Kontingen</a></li>
-                <li><a href="bukti_pembayaran.php" class="block py-2.5 px-4 rounded bg-gray-700">Bukti Pembayaran</a></li>
-                <li><a href="data_peserta.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700 ">Data Peserta</a></li
-            <li><a href="data_peserta_jamcab.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Peserta JamCab</a></li>
-            <li><a href="../logout.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Logout</a></li>
-        </ul>
-    </nav>
-</div>
+<?php include 'sidebar.php'; ?>
+
     <div class="main-content flex-1 p-10 md:ml-64">
         <header class="bg-white shadow p-6 rounded-lg mb-6">
             <h1 class="text-3xl font-bold text-gray-800">Bukti Pembayaran</h1>

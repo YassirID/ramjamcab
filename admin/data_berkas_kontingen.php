@@ -3,7 +3,7 @@ session_start();
 include('../includes/db.php');
 
 // Cek autentikasi
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'pinkoncab' && $_SESSION['role'] !== 'pinkonran')) {
+if (!in_array($_SESSION['role'], ['admin', 'cabang', 'selatan', 'utara', 'tengah', 'saka'])) {
     header("Location: ../index.php");
     exit();
 }
@@ -11,92 +11,113 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'pinkoncab' && $_SESS
 $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'];
 
-// Handle upload (POST)
+// Handle upload (POST) - hanya admin, selatan, utara, tengah, saka yang bisa unggah
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_berkas'])) {
+    if ($role === 'cabang') {
+        $_SESSION['prg_error'] = "Role cabang tidak diperbolehkan menambahkan data.";
+        header("Location: data_berkas_kontingen.php");
+        exit();
+    }
+if ($role === 'cabang') {
+    $_SESSION['prg_error'] = "Role cabang tidak diperbolehkan menambahkan data.";
+    header("Location: data_berkas_kontingen.php");
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_berkas']) && in_array($role, ['admin', 'selatan', 'utara', 'tengah', 'saka'])) {
     $nama_berkas = $conn->real_escape_string($_POST['nama_berkas']);
     $catatan_dokumen = $conn->real_escape_string($_POST['catatan_dokumen'] ?? '');
-    $status = $_POST['status'];
-    if ($status !== 'terkirim' && $status !== 'tertunda') {
-        $status = 'tertunda';
-    }
+    $kontingen = $conn->real_escape_string($_POST['kontingen']);
+    $status = $_POST['status'] === 'terkirim' ? 'terkirim' : 'tertunda';
     $uploaded_at = date('Y-m-d H:i:s');
 
     $target_dir = "../uploads/berkas_kontingen/";
     $file_name = uniqid() . "_" . basename($_FILES["file_berkas"]["name"]);
     $target_file = $target_dir . $file_name;
-    $uploadOk = 1;
     $fileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
 
-    if (!is_dir($target_dir)) {
-        mkdir($target_dir, 0777, true);
-    }
+    if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
 
     if (file_exists($target_file)) {
         $_SESSION['prg_error'] = "Maaf, file sudah ada.";
-        $uploadOk = 0;
-    }
+    } elseif (!in_array($fileType, ['pdf', 'docx', 'jpg', 'png'])) {
+        $_SESSION['prg_error'] = "Format file tidak diizinkan (PDF, DOCX, JPG, PNG).";
+    } elseif (move_uploaded_file($_FILES["file_berkas"]["tmp_name"], $target_file)) {
+        $sql = "INSERT INTO berkas_kontingen 
+    (user_id, nama_berkas, file_path, status, catatan_dokumen, kontingen, post_by, uploaded_at) 
+    VALUES 
+    ('$user_id', '$nama_berkas', '$file_name', '$status', '$catatan_dokumen', '$kontingen', '$role', '$uploaded_at')";
 
-    if (!in_array($fileType, ['pdf', 'docx', 'jpg', 'png'])) {
-        $_SESSION['prg_error'] = "Format file tidak diizinkan (hanya PDF, DOCX, JPG, PNG).";
-        $uploadOk = 0;
-    }
-
-    if ($uploadOk == 0) {
-        $_SESSION['prg_error'] = $_SESSION['prg_error'] ?? "Maaf, file Anda tidak terunggah.";
+        $_SESSION['prg_message'] = $conn->query($sql) ? "Berkas berhasil diunggah." : "Gagal menyimpan ke database. {$conn->error}";
     } else {
-        if (move_uploaded_file($_FILES["file_berkas"]["tmp_name"], $target_file)) {
-            $sql = "INSERT INTO berkas_kontingen 
-                (user_id, nama_berkas, file_path, status, catatan_dokumen, post_by, uploaded_at) 
-                VALUES 
-                ('$user_id', '$nama_berkas', '$file_name', '$status', '$catatan_dokumen', '$role', '$uploaded_at')";
-            
-            if ($conn->query($sql) === TRUE) {
-                $_SESSION['prg_message'] = "Berkas berhasil diunggah.";
-            } else {
-                $_SESSION['prg_error'] = "Gagal menyimpan ke database. " . $conn->error;
-            }
-        } else {
-            $_SESSION['prg_error'] = "Terjadi kesalahan saat mengunggah file.";
-        }
+        $_SESSION['prg_error'] = "Terjadi kesalahan saat mengunggah file.";
     }
 
     header("Location: data_berkas_kontingen.php");
-    exit;
+    exit();
+}
 }
 
 
-
-
-
-    // Redirect agar tidak insert ulang saat refresh
-  
-
-// Handle delete
+// Handle delete - hanya boleh hapus jika berkas milik sendiri
 if (isset($_GET['delete_id'])) {
     $id_to_delete = $conn->real_escape_string($_GET['delete_id']);
     $sql_get_file = "SELECT file_path FROM berkas_kontingen WHERE id = '$id_to_delete' AND user_id = '$user_id'";
     $result_get_file = $conn->query($sql_get_file);
-    if ($result_get_file->num_rows > 0) {
+
+    if ($result_get_file && $result_get_file->num_rows > 0) {
         $row_file = $result_get_file->fetch_assoc();
         $file_to_delete = "../uploads/berkas_kontingen/" . $row_file['file_path'];
-        if (file_exists($file_to_delete)) {
-            unlink($file_to_delete); 
-        }
+        if (file_exists($file_to_delete)) unlink($file_to_delete);
+
         $sql_delete = "DELETE FROM berkas_kontingen WHERE id = '$id_to_delete' AND user_id = '$user_id'";
-        if ($conn->query($sql_delete) === TRUE) {
-            $_SESSION['prg_message'] = "Berkas berhasil dihapus.";
-        } else {
-            $_SESSION['prg_error'] = "Gagal menghapus berkas.";
-        }
+        $_SESSION['prg_message'] = $conn->query($sql_delete) ? "Berkas berhasil dihapus." : "Gagal menghapus berkas.";
     } else {
         $_SESSION['prg_error'] = "Berkas tidak ditemukan.";
     }
 }
 
-// Ambil data berkas kontingen
-$sql_berkas = "SELECT * FROM berkas_kontingen WHERE user_id = '$user_id'";
+// Pagination setup
+$limit = 20; // jumlah data per halaman
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+$offset = ($page - 1) * $limit;
+
+// Filter post_by (khusus admin & cabang)
+$post_by_filter = '';
+if (in_array($role, ['admin', 'cabang']) && isset($_GET['filter_post_by']) && $_GET['filter_post_by'] !== '') {
+    $post_by_filter = $conn->real_escape_string($_GET['filter_post_by']);
+}
+
+
+$post_by_filter = '';
+if (in_array($role, ['admin', 'cabang']) && isset($_GET['filter_post_by']) && $_GET['filter_post_by'] !== '') {
+    $post_by_filter = $conn->real_escape_string($_GET['filter_post_by']);
+}
+
+$conditions = [];
+
+if (!in_array($role, ['admin', 'cabang'])) {
+    $conditions[] = "post_by = '$role'";
+} elseif ($post_by_filter !== '') {
+    $conditions[] = "post_by = '$post_by_filter'";
+}
+
+$whereClause = '';
+if (!empty($conditions)) {
+    $whereClause = 'WHERE ' . implode(' AND ', $conditions);
+}
+
+$sql_berkas = "SELECT * FROM berkas_kontingen $whereClause ORDER BY uploaded_at DESC LIMIT $limit OFFSET $offset";
+$sql_count  = "SELECT COUNT(*) as total FROM berkas_kontingen $whereClause";
+
+
 $result_berkas = $conn->query($sql_berkas);
+$result_count = $conn->query($sql_count);
+$total_rows = $result_count->fetch_assoc()['total'] ?? 0;
+$total_pages = ceil($total_rows / $limit);
+
 ?>
+
 
 
 <!DOCTYPE html>
@@ -122,29 +143,17 @@ $result_berkas = $conn->query($sql_berkas);
     </style>
 </head>
 <body class="font-sans bg-gray-100 flex h-screen">
-     <div class="sidebar bg-gray-800 text-white w-64 space-y-6 py-7 px-2 fixed inset-y-0 left-0">
-     <a href="">
-        <img src="../src/img/GRAPHIC.png" alt="Logo Raimuna Cabang Cimahi" class="w-48 mx-auto mb-6">
-    </a>
-    <nav>
-        <ul class="space-y-2">
-            <li><a href="dashboard_<?php echo $role; ?>.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Dashboard</a></li>
-            <li><a href="data_berkas_kontingen.php" class="block py-2.5 px-4 rounded bg-gray-700">Data Berkas Kontingen</a></li>
-            <li><a href="data_unsur_kontingen.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Unsur Kontingen</a></li><?php if ($role == 'pinkoncab'): ?>
-                <li><a href="bukti_pembayaran.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Bukti Pembayaran</a></li>
-            <?php endif; ?>
-                <li><a href="data_peserta.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700 ">Data Peserta</a></li
-            <li><a href="data_peserta_jamcab.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Peserta JamCab</a></li>
-            <li><a href="../logout.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Logout</a></li>
-        </ul>
-    </nav>
-</div>
+<?php include 'sidebar.php'; ?>
+
     <div class="main-content flex-1 p-10 md:ml-64">
         <header class="bg-white shadow p-6 rounded-lg mb-6">
             <h1 class="text-3xl font-bold text-gray-800">Data Berkas Kontingen</h1>
         </header>
         <section class="content bg-white shadow p-6 rounded-lg">
+             <?php if (!in_array($role, ['cabang'])): ?>
             <button onclick="document.getElementById('addBerkasModal').style.display='block'" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">Add Berkas</button>
+            <?php endif; ?>
+
 
             <div id="addBerkasModal" class="modal">
                 <div class="modal-content bg-white m-auto p-8 rounded-lg shadow-lg w-11/12 md:w-1/2 lg:w-1/3">
@@ -170,6 +179,17 @@ $result_berkas = $conn->query($sql_berkas);
                             <label for="file_berkas" class="block text-gray-700 text-sm font-bold mb-2">File:</label>
                             <input type="file" id="file_berkas" name="file_berkas" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
                         </div>
+                        <div>
+                            <label for="kontingen" class="block text-gray-700 text-sm font-bold mb-2">Kontingen:</label>
+                            <select name="kontingen" id="kontingen" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                                <option value="">Pilih Kontingen</option>
+                                <option value="utara">Utara</option>
+                                <option value="tengah">Tengah</option>
+                                <option value="selatan">Selatan</option>
+                                <option value="saka">Saka</option>
+                            </select>
+                        </div>
+
 
                         <div>
                             <label for="catatan_dokumen" class="block text-gray-700 text-sm font-bold mb-2">Catatan Dokumen:</label>
@@ -189,6 +209,23 @@ $result_berkas = $conn->query($sql_berkas);
             
                       <div class="flex flex-wrap gap-1 mb-1">
                         <input type="text" id="searchInput" placeholder="Cari nama berkas..." class="border p-2 rounded mb-4 w-full max-w-sm">
+                        <?php if (in_array($role, ['admin', 'cabang'])): ?>
+                            <form method="GET" class="mb-4 flex gap-2">
+                                <label for="filter_post_by" class="text-sm font-semibold mt-2">Filter Post By:</label>
+                                <select name="filter_post_by" id="filter_post_by" class="border rounded p-2">
+                                    <option value="">Semua</option>
+                                    <option value="utara" <?= $post_by_filter === 'utara' ? 'selected' : '' ?>>Utara</option>
+                                    <option value="tengah" <?= $post_by_filter === 'tengah' ? 'selected' : '' ?>>Tengah</option>
+                                    <option value="selatan" <?= $post_by_filter === 'selatan' ? 'selected' : '' ?>>Selatan</option>
+                                    <option value="saka" <?= $post_by_filter === 'saka' ? 'selected' : '' ?>>Saka</option>
+                                </select>
+                                <button type="submit" class="bg-blue-500 text-white px-3 rounded hover:bg-blue-600">Terapkan</button>
+                            </form>
+                            <?php endif; ?>
+                            <form method="POST" action="./export/export_csv.php" class="inline">
+                                <input type="hidden" name="post_by_filter" value="<?= $post_by_filter ?>">
+                                <button type="submit" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-800 mb-4 gap-4">Export CSV</button>
+                            </form>
                          <button onclick="exportToExcel('berkasTable')" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mb-4 gap-4">Export ke Excel</button>
                         <button onclick="exportToPDF()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 mb-4 gap-4">Export ke PDF</button>
                         </div>
@@ -242,10 +279,13 @@ $result_berkas = $conn->query($sql_berkas);
                                 echo "<td class='py-3 px-6 text-left'>" . ($row['catatan_dokumen']) . "</td>";
                                 echo "<td class='py-3 px-6 text-left'>" . ($row['uploaded_at']) . "</td>";
                                 echo "<td class='py-3 px-6 text-left'>" . ($row['post_by']) . "</td>";
-                                echo "<td class='py-3 px-6 text-left'>
-                                    <a href='edit_berkas_kontingen.php?id=" . $row['id'] . "' class='bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded mr-2'>Edit</a>
-                                    <a href='data_berkas_kontingen.php?delete_id=" . $row['id'] . "' class='bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded' onclick='return confirm(\"Yakin ingin menghapus berkas ini?\");'>Delete</a>
-                                </td>";
+                                echo "<td class='py-3 px-6 text-left'>";
+                                if ($role !== 'cabang') {
+                                    echo "<a href='edit_berkas_kontingen.php?id=" . $row['id'] . "' class='bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded mr-2'>Edit</a>";
+                                    echo "<a href='data_berkas_kontingen.php?delete_id=" . $row['id'] . "' class='bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded' onclick='return confirm(\"Yakin ingin menghapus berkas ini?\");'>Delete</a>";
+                                }
+                                echo "</td>";
+
                                 echo "</tr>";
                             }
                         } else {
@@ -254,6 +294,20 @@ $result_berkas = $conn->query($sql_berkas);
                         ?>
                     </tbody>
                 </table>
+                                    <div class="flex  mt-6 space-x-2">
+                    <?php if ($page > 1): ?>
+                        <a href="?page=<?= $page - 1 ?>" class="px-3 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">&laquo; Prev</a>
+                    <?php endif; ?>
+
+                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                        <a href="?page=<?= $i ?>" class="px-3 py-2 <?= $i == $page ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800' ?> rounded hover:bg-gray-400"><?= $i ?></a>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $total_pages): ?>
+                        <a href="?page=<?= $page + 1 ?>" class="px-3 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">Next &raquo;</a>
+                    <?php endif; ?>
+                    </div>
+
             </div>
         </section>
     </div>
@@ -265,6 +319,8 @@ $result_berkas = $conn->query($sql_berkas);
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+
 
 <script>
 function exportToExcel(tableID, filename = 'Data_Berkas_Kontingen.xlsx') {

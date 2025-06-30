@@ -3,7 +3,8 @@ session_start();
 include('../includes/db.php');
 
 // Cek autentikasi
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'pinkoncab' && $_SESSION['role'] !== 'pinkonran')) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'utara', 'tengah', 'selatan', 'saka'])) {
+    $_SESSION['prg_error'] = "Anda tidak memiliki akses ke halaman ini.";
     header("Location: ../index.php");
     exit();
 }
@@ -21,7 +22,12 @@ if (!isset($_GET['id'])) {
 $id = $conn->real_escape_string($_GET['id']);
 
 // Ambil data lama
-$sql = "SELECT * FROM berkas_kontingen WHERE id = '$id' AND user_id = '$user_id'";
+if ($role === 'admin') {
+    $sql = "SELECT * FROM berkas_kontingen WHERE id = '$id'";
+} else {
+    $sql = "SELECT * FROM berkas_kontingen WHERE id = '$id' AND user_id = '$user_id'";
+}
+
 $result = $conn->query($sql);
 if ($result->num_rows !== 1) {
     $_SESSION['prg_error'] = "Data tidak ditemukan.";
@@ -35,15 +41,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_berkas'])) {
     $nama_berkas = $conn->real_escape_string($_POST['nama_berkas']);
     $catatan_dokumen = $conn->real_escape_string($_POST['catatan_dokumen']);
     $status = $_POST['status'];
+    $kontingen = $conn->real_escape_string($_POST['kontingen']);
     if ($status !== 'terkirim' && $status !== 'tertunda') {
         $status = 'tertunda';
     }
 
+if ($role === 'admin') {
     $sql_update = "UPDATE berkas_kontingen 
                    SET nama_berkas = '$nama_berkas', 
                        catatan_dokumen = '$catatan_dokumen',
-                       status = '$status'
+                       status = '$status',
+                       kontingen = '$kontingen'
+                   WHERE id = '$id'";
+} else {
+    $sql_update = "UPDATE berkas_kontingen 
+                   SET nama_berkas = '$nama_berkas', 
+                       catatan_dokumen = '$catatan_dokumen',
+                       status = '$status',
+                       kontingen = '$kontingen'
                    WHERE id = '$id' AND user_id = '$user_id'";
+}
+
+
 
     if ($conn->query($sql_update) === TRUE) {
         $_SESSION['prg_message'] = "Data berhasil diperbarui.";
@@ -78,6 +97,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_berkas'])) {
             <label for="catatan_dokumen" class="block text-gray-700 text-sm font-bold mb-2">Catatan Dokumen:</label>
             <input type="text" id="catatan_dokumen" name="catatan_dokumen" value="<?= htmlspecialchars($data['catatan_dokumen']) ?>" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
         </div>
+        <div>
+            <label for="kontingen" class="block text-gray-700 text-sm font-bold mb-2">Kontingen:</label>
+            <select name="kontingen" id="kontingen" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                <option value="">Pilih Kontingen</option>
+                <option value="utara" <?= $data['kontingen'] === 'utara' ? 'selected' : '' ?>>Utara</option>
+                <option value="tengah" <?= $data['kontingen'] === 'tengah' ? 'selected' : '' ?>>Tengah</option>
+                <option value="selatan" <?= $data['kontingen'] === 'selatan' ? 'selected' : '' ?>>Selatan</option>
+                <option value="saka" <?= $data['kontingen'] === 'saka' ? 'selected' : '' ?>>Saka</option>
+            </select>
+        </div>
+
 
         <div>
             <label for="status" class="block text-gray-700 text-sm font-bold mb-2">Status:</label>

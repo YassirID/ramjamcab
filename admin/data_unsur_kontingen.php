@@ -1,14 +1,17 @@
 <?php
 session_start();
 include('../includes/db.php');
+include('../includes/auth.php'); // tambahkan validasi login (jika kamu pakai sistem auth.php)
 
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'pinkoncab' && $_SESSION['role'] !== 'pinkonran')) {
-    header("Location: ../index.php"); 
+if (!in_array($_SESSION['role'], ['admin', 'cabang', 'selatan', 'utara', 'tengah', 'saka'])) {
+    header("Location: ../index.php");
     exit();
 }
 
 $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'];
+$username = $_SESSION['username'];
+
 
 // --- Handle Add Unsur Kontingen ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_unsur'])) {
@@ -149,9 +152,30 @@ if (isset($_GET['delete_unsur_id'])) {
     exit();
 }
 
-// Ambil data unsur kontingen untuk ditampilkan
-$sql_unsur = "SELECT * FROM unsur_kontingen WHERE user_id = '$user_id'";
+
+$filter_kontingen = '';
+if (in_array($role, ['admin', 'cabang']) && isset($_GET['role'])) {
+    $filter_kontingen = $conn->real_escape_string($_GET['role']);
+}
+
+
+$sql_unsur = "SELECT u.*, us.username, us.role 
+              FROM unsur_kontingen u 
+              JOIN users us ON u.user_id = us.id 
+              WHERE 1=1";
+
+
+if (in_array($role, ['admin', 'cabang']) && $filter_kontingen != '') {
+    $sql_unsur .= " AND us.role = '$filter_kontingen'";
+}
+
+
+
 $result_unsur = $conn->query($sql_unsur);
+if (!$result_unsur) {
+    die("Query Error: " . $conn->error);
+}
+
 
 // Tampilkan pesan sukses/error
 $message = '';
@@ -190,23 +214,8 @@ if (isset($_SESSION['error'])) {
     </style>
 </head>
 <body class="font-sans bg-gray-100 flex h-screen">
-     <div class="sidebar bg-gray-800 text-white w-64 space-y-6 py-7 px-2 fixed inset-y-0 left-0">
-     <a href="">
-        <img src="../src/img/GRAPHIC.png" alt="Logo Raimuna Cabang Cimahi" class="w-48 mx-auto mb-6">
-    </a>
-    <nav>
-        <ul class="space-y-2">
-            <li><a href="dashboard_<?php echo $role; ?>.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Dashboard</a></li>
-            <li><a href="data_berkas_kontingen.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Berkas Kontingen</a></li>
-            <li><a href="data_unsur_kontingen.php" class="block py-2.5 px-4 rounded bg-gray-700">Data Unsur Kontingen</a></li><?php if ($role == 'pinkoncab'): ?>
-                <li><a href="bukti_pembayaran.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Bukti Pembayaran</a></li>
-            <?php endif; ?>
-                <li><a href="data_peserta.php" class="block py-2.5 px-4 rounded transition duration-200 hover:bg-gray-700 ">Data Peserta</a></li
-            <li><a href="data_peserta_jamcab.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Data Peserta JamCab</a></li>
-            <li><a href="../logout.php" class="block py-2.5 px-4 rounded hover:bg-gray-700">Logout</a></li>
-        </ul>
-    </nav>
-</div>
+<?php include 'sidebar.php'; ?>
+
     <div class="main-content flex-1 p-10 md:ml-64">
         <header class="bg-white shadow p-6 rounded-lg mb-6">
             <h1 class="text-3xl font-bold text-gray-800">Data Unsur Kontingen</h1>
@@ -215,82 +224,128 @@ if (isset($_SESSION['error'])) {
             <?php if ($message): ?><p class="text-green-600 mb-4"><?php echo $message; ?></p><?php endif; ?>
             <?php if ($error): ?><p class="text-red-600 mb-4"><?php echo $error; ?></p><?php endif; ?>
 
-            <button onclick="document.getElementById('addUnsurModal').style.display='block'" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">Add Unsur</button>
+                <?php if (in_array($role, ['admin', 'selatan', 'utara', 'tengah', 'saka'])): ?>
+                <button onclick="document.getElementById('addUnsurModal').style.display='block'" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">Add Unsur</button>
+                <?php endif; ?>
 
-            <div id="addUnsurModal" class="modal">
-                <div class="modal-content bg-white m-auto p-8 rounded-lg shadow-lg w-11/12 md:w-1/2 lg:w-1/3">
-                    <span class="close-button text-gray-700 float-right text-4xl font-bold cursor-pointer hover:text-black" onclick="document.getElementById('addUnsurModal').style.display='none'">&times;</span>
-                    <h2 class="text-2xl font-bold mb-4">Form Add Data Unsur Kontingen</h2>
-                    <form action="data_unsur_kontingen.php" method="POST" class="space-y-4">
-                        <div>
-                            <label for="nama_lengkap" class="block text-gray-700 text-sm font-bold mb-2">Nama Lengkap:</label>
-                            <input type="text" id="nama_lengkap" name="nama_lengkap" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+           
 
-                        <div>
-                            <label for="jenis_kelamin" class="block text-gray-700 text-sm font-bold mb-2">Jenis Kelamin:</label>
-                            <select id="jenis_kelamin" name="jenis_kelamin" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                                <option value="">Pilih</option>
-                                <option value="Laki-laki">Laki-laki</option>
-                                <option value="Perempuan">Perempuan</option>
-                            </select>
-                        </div>
+            <!-- Add Form Start -->
+<div id="addUnsurModal" class="modal">
+  <div class="modal-content bg-white w-full max-w-7xl md:m-auto m-5 p-8 rounded-lg shadow-lg overflow-y-auto max-h-[90vh]">
+    <span class="close-button text-gray-700 float-right text-4xl font-bold cursor-pointer hover:text-black"
+      onclick="document.getElementById('addUnsurModal').style.display='none'">&times;</span>
 
-                        <div>
-                            <label for="no_hp_wa" class="block text-gray-700 text-sm font-bold mb-2">No. Hp/WA:</label>
-                            <input type="text" id="no_hp_wa" name="no_hp_wa" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+    <h2 class="text-2xl font-bold mb-6">Form Add Data Unsur Kontingen</h2>
 
-                        <div>
-                            <label for="agama" class="block text-gray-700 text-sm font-bold mb-2">Agama:</label>
-                            <input type="text" id="agama" name="agama" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+    <form action="data_unsur_kontingen.php" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                        <div>
-                            <label for="riwayat_penyakit" class="block text-gray-700 text-sm font-bold mb-2">Riwayat Penyakit:</label>
-                            <textarea id="riwayat_penyakit" name="riwayat_penyakit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></textarea>
-                        </div>
+      <!-- Kolom Kiri (6 input) -->
+      <div class="space-y-4">
+        <div>
+          <label for="nama_lengkap" class="block text-sm font-bold text-gray-700 mb-1">Nama Lengkap:</label>
+          <input type="text" id="nama_lengkap" name="nama_lengkap" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="tempat_lahir" class="block text-gray-700 text-sm font-bold mb-2">Tempat Lahir:</label>
-                            <input type="text" id="tempat_lahir" name="tempat_lahir" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="kontingen" class="block text-sm font-bold text-gray-700 mb-1">Kontingen:</label>
+          <select id="kontingen" name="kontingen" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih Kontingen</option>
+            <option value="utara">Utara</option>
+            <option value="selatan">Selatan</option>
+            <option value="tengah">Tengah</option>
+            <option value="saka">Saka</option>
+            <option value="cabang">Cabang</option>
+          </select>
+        </div>
 
-                        <div>
-                            <label for="tanggal_lahir" class="block text-gray-700 text-sm font-bold mb-2">Tanggal Lahir:</label>
-                            <input type="date" id="tanggal_lahir" name="tanggal_lahir" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="jenis_kelamin" class="block text-sm font-bold text-gray-700 mb-1">Jenis Kelamin:</label>
+          <select id="jenis_kelamin" name="jenis_kelamin" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih</option>
+            <option value="Laki-laki">Laki-laki</option>
+            <option value="Perempuan">Perempuan</option>
+          </select>
+        </div>
 
-                        <div>
-                            <label for="ukuran_kaos" class="block text-gray-700 text-sm font-bold mb-2">Ukuran Kaos:</label>
-                            <select id="ukuran_kaos" name="ukuran_kaos" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                                <option value="">Pilih</option>
-                                <option value="S">S</option>
-                                <option value="M">M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                                <option value="XXL">XXL</option>
-                            </select>
-                        </div>
+        <div>
+          <label for="no_hp_wa" class="block text-sm font-bold text-gray-700 mb-1">No. HP/WA:</label>
+          <input type="text" id="no_hp_wa" name="no_hp_wa"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="kategori_unsur" class="block text-gray-700 text-sm font-bold mb-2">Kategori Unsur:</label>
-                            <input type="text" id="kategori_unsur" name="kategori_unsur" required placeholder="Ex: Pembina Pendamping" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="agama" class="block text-sm font-bold text-gray-700 mb-1">Agama:</label>
+          <input type="text" id="agama" name="agama"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="golongan_darah" class="block text-gray-700 text-sm font-bold mb-2">Golongan Darah:</label>
-                            <input type="text" id="golongan_darah" name="golongan_darah" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="riwayat_penyakit" class="block text-sm font-bold text-gray-700 mb-1">Riwayat Penyakit:</label>
+          <textarea id="riwayat_penyakit" name="riwayat_penyakit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none"></textarea>
+        </div>
+      </div>
 
-                        <div class="flex justify-end space-x-2 mt-4">
-                            <button type="submit" name="add_unsur" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Save Changes</button>
-                            <button type="button" onclick="document.getElementById('addUnsurModal').style.display='none'" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Close</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+      <!-- Kolom Kanan (5 input) -->
+      <div class="space-y-4">
+        <div>
+          <label for="tempat_lahir" class="block text-sm font-bold text-gray-700 mb-1">Tempat Lahir:</label>
+          <input type="text" id="tempat_lahir" name="tempat_lahir"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
+        <div>
+          <label for="tanggal_lahir" class="block text-sm font-bold text-gray-700 mb-1">Tanggal Lahir:</label>
+          <input type="date" id="tanggal_lahir" name="tanggal_lahir"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+
+        <div>
+          <label for="ukuran_kaos" class="block text-sm font-bold text-gray-700 mb-1">Ukuran Kaos:</label>
+          <select id="ukuran_kaos" name="ukuran_kaos"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih</option>
+            <option value="S">S</option>
+            <option value="M">M</option>
+            <option value="L">L</option>
+            <option value="XL">XL</option>
+            <option value="XXL">XXL</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="kategori_unsur" class="block text-sm font-bold text-gray-700 mb-1">Kategori Unsur:</label>
+          <input type="text" id="kategori_unsur" name="kategori_unsur" placeholder="Ex: Pembina Pendamping" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+
+        <div>
+          <label for="golongan_darah" class="block text-sm font-bold text-gray-700 mb-1">Golongan Darah:</label>
+          <input type="text" id="golongan_darah" name="golongan_darah"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+      </div>
+
+      <!-- Tombol -->
+      <div class="col-span-1 md:col-span-2 flex justify-end gap-2 pt-4">
+        <button type="submit" name="add_unsur"
+          class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none">
+          Save Changes
+        </button>
+        <button type="button"
+          onclick="document.getElementById('addUnsurModal').style.display='none'"
+          class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none">
+          Close
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+        <!-- Add Form End -->
               <div class="flex flex-wrap gap-1 mb-1">
                         <input type="text" id="searchInput" placeholder="Cari nama berkas..." class="border p-2 rounded mb-4 w-full max-w-sm">
                          <button onclick="exportToExcel('berkasTable')" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mb-4 gap-4">Export ke Excel</button>
@@ -305,6 +360,7 @@ if (isset($_SESSION['error'])) {
                         });
                         </script>
 
+                        <!-- Table Start -->
             <div class="overflow-x-auto">
                 <table class="min-w-full bg-white border border-gray-300">
                     <thead>
@@ -320,6 +376,15 @@ if (isset($_SESSION['error'])) {
                     </thead>
                     <tbody class="text-gray-600 text-sm font-light">
                         <?php
+$can_edit_delete = false;
+if ($role == 'admin') {
+    $can_edit_delete = true;
+} elseif (in_array($role, ['selatan', 'utara', 'tengah', 'saka']) && $row['user_id'] == $user_id) {
+    $can_edit_delete = true;
+}
+?>
+
+                        <?php
                         if ($result_unsur->num_rows > 0) {
                             $no = 1;
                             while($row = $result_unsur->fetch_assoc()) {
@@ -330,43 +395,46 @@ if (isset($_SESSION['error'])) {
                                 echo "<td class='py-3 px-6 text-left'>" . ($row['no_hp_wa']) . "</td>";
                                 echo "<td class='py-3 px-6 text-left'>" . ($row['kategori_unsur']) . "</td>";
                                 echo "<td class='py-3 px-6 text-left whitespace-nowrap'>";
+                               if ($can_edit_delete): 
                                 echo "<button class='bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-1 px-3 rounded mr-2' onclick='openEditUnsurModal(" . json_encode($row) . ")'>Edit</button>";
                                 echo "<a href='data_unsur_kontingen.php?delete_unsur_id=" . $row['id'] . "' class='bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded' onclick='return confirm(\"Yakin ingin menghapus data ini?\");'>Delete</a>";
+                                
+                                endif; 
                                 echo "</td>";
                                echo "<td class='py-3 px-6 text-left text-xs flex flex-col space-y-1'>";
 
-$berkasList = [
-    'pas_foto' => 'Pas Foto',
-    'kta' => 'KTA',
-    'asuransi' => 'Asuransi',
-    'sertifikat_sfh' => 'Sertifikat SFH'
-];
+                                $berkasList = [
+                                    'pas_foto' => 'Pas Foto',
+                                    'kta' => 'KTA',
+                                    'asuransi' => 'Asuransi',
+                                    'sertifikat_sfh' => 'Sertifikat SFH'
+                                ];
 
-foreach ($berkasList as $field => $label) {
-    $filePath = $row[$field . '_path'];
+                                foreach ($berkasList as $field => $label) {
+                                    $filePath = $row[$field . '_path'];
 
-    echo "<div class='flex items-center space-x-2'>";
-    echo "<span class='font-semibold'>{$label}:</span> ";
+                                    echo "<div class='flex items-center space-x-2'>";
+                                    echo "<span class='font-semibold'>{$label}:</span> ";
 
-    if ($filePath) {
-        // Jika file sudah diupload
-        echo "<a href='../uploads/berkas_unsur/{$filePath}' target='_blank' class='text-blue-600 hover:underline'>Lihat</a> ";
-        echo "<a href='berkas_unsur_handler.php?action=delete&id={$row['id']}&type=$field' class='text-red-500 hover:text-red-700' 
-                title='Hapus' 
-                onClick='return confirm(\"Yakin hapus {$label}?\")'>Hapus</a> ";
-        echo "<button onClick='openUploadModal({$row['id']}, \"{$field}\")' 
-                    class='bg-green-500 hover:bg-green-600 text-white py-0.5 px-2 rounded text-xs'>Ganti</button>";
-    } else {
-        // Jika belum diupload
-        echo "<span class='text-gray-500'>Belum ada</span> ";
-        echo "<button onClick='openUploadModal({$row['id']}, \"{$field}\")' 
-                    class='bg-yellow-500 hover:bg-yellow-600 text-white py-0.5 px-2 rounded text-xs'>Upload</button>";
-    }
+                                    if ($filePath) {
+                                        // Jika file sudah diupload
+                                        echo "<a href='../uploads/berkas_unsur/{$filePath}' target='_blank' class='text-blue-600 hover:underline'>Lihat</a> ";
+                                        echo "<a href='berkas_unsur_handler.php?action=delete&id={$row['id']}&type=$field' class='text-red-500 hover:text-red-700' 
+                                                title='Hapus' 
+                                                onClick='return confirm(\"Yakin hapus {$label}?\")'>Hapus</a> ";
+                                        echo "<button onClick='openUploadModal({$row['id']}, \"{$field}\")' 
+                                                    class='bg-green-500 hover:bg-green-600 text-white py-0.5 px-2 rounded text-xs'>Ganti</button>";
+                                    } else {
+                                        // Jika belum diupload
+                                        echo "<span class='text-gray-500'>Belum ada</span> ";
+                                        echo "<button onClick='openUploadModal({$row['id']}, \"{$field}\")' 
+                                                    class='bg-yellow-500 hover:bg-yellow-600 text-white py-0.5 px-2 rounded text-xs'>Upload</button>";
+                                    }
 
-    echo "</div>";
-}
+                                    echo "</div>";
+                                }
 
-echo "</td>";
+                                echo "</td>";
 
                                 echo "</tr>";
                             }
@@ -377,81 +445,126 @@ echo "</td>";
                     </tbody>
                 </table>
             </div>
+            <!-- Table End -->
 
-            <div id="editUnsurModal" class="modal">
-                <div class="modal-content bg-white m-auto p-8 rounded-lg shadow-lg w-11/12 md:w-1/2 lg:w-1/3">
-                    <span class="close-button text-gray-700 float-right text-4xl font-bold cursor-pointer hover:text-black" onclick="document.getElementById('editUnsurModal').style.display='none'">&times;</span>
-                    <h2 class="text-2xl font-bold mb-4">Form Edit Data Unsur Kontingen</h2>
-                    <form action="data_unsur_kontingen.php" method="POST" class="space-y-4">
-                        <input type="hidden" id="unsur_id_edit" name="unsur_id_edit">
-                        <div>
-                            <label for="nama_lengkap_edit" class="block text-gray-700 text-sm font-bold mb-2">Nama Lengkap:</label>
-                            <input type="text" id="nama_lengkap_edit" name="nama_lengkap_edit" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+<!-- Edit Form Start -->
+<div id="editUnsurModal" class="modal">
+  <div class="modal-content bg-white w-full max-w-7xl md:m-auto m-5 p-8 rounded-lg shadow-lg overflow-y-auto max-h-[90vh]">
+    <span class="close-button text-gray-700 float-right text-4xl font-bold cursor-pointer hover:text-black"
+      onclick="document.getElementById('editUnsurModal').style.display='none'">&times;</span>
 
-                        <div>
-                            <label for="jenis_kelamin_edit" class="block text-gray-700 text-sm font-bold mb-2">Jenis Kelamin:</label>
-                            <select id="jenis_kelamin_edit" name="jenis_kelamin_edit" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                                <option value="">Pilih</option>
-                                <option value="Laki-laki">Laki-laki</option>
-                                <option value="Perempuan">Perempuan</option>
-                            </select>
-                        </div>
+    <h2 class="text-2xl font-bold mb-6">Form Edit Data Unsur Kontingen</h2>
 
-                        <div>
-                            <label for="no_hp_wa_edit" class="block text-gray-700 text-sm font-bold mb-2">No. Hp/WA:</label>
-                            <input type="text" id="no_hp_wa_edit" name="no_hp_wa_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+    <form action="data_unsur_kontingen.php" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Hidden ID -->
+      <input type="hidden" id="unsur_id_edit" name="unsur_id_edit">
 
-                        <div>
-                            <label for="agama_edit" class="block text-gray-700 text-sm font-bold mb-2">Agama:</label>
-                            <input type="text" id="agama_edit" name="agama_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+      <!-- Kolom Kiri -->
+      <div class="space-y-4">
+        <div>
+          <label for="nama_lengkap_edit" class="block text-sm font-bold text-gray-700 mb-1">Nama Lengkap:</label>
+          <input type="text" id="nama_lengkap_edit" name="nama_lengkap_edit" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="riwayat_penyakit_edit" class="block text-gray-700 text-sm font-bold mb-2">Riwayat Penyakit:</label>
-                            <textarea id="riwayat_penyakit_edit" name="riwayat_penyakit_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></textarea>
-                        </div>
+        <div>
+          <label for="kontingen_edit" class="block text-sm font-bold text-gray-700 mb-1">Kontingen:</label>
+          <select id="kontingen_edit" name="kontingen" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih Kontingen</option>
+            <option value="utara">Utara</option>
+            <option value="selatan">Selatan</option>
+            <option value="tengah">Tengah</option>
+            <option value="saka">Saka</option>
+            <option value="cabang">Cabang</option>
+          </select>
+        </div>
 
-                        <div>
-                            <label for="tempat_lahir_edit" class="block text-gray-700 text-sm font-bold mb-2">Tempat Lahir:</label>
-                            <input type="text" id="tempat_lahir_edit" name="tempat_lahir_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="jenis_kelamin_edit" class="block text-sm font-bold text-gray-700 mb-1">Jenis Kelamin:</label>
+          <select id="jenis_kelamin_edit" name="jenis_kelamin_edit" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih</option>
+            <option value="Laki-laki">Laki-laki</option>
+            <option value="Perempuan">Perempuan</option>
+          </select>
+        </div>
 
-                        <div>
-                            <label for="tanggal_lahir_edit" class="block text-gray-700 text-sm font-bold mb-2">Tanggal Lahir:</label>
-                            <input type="date" id="tanggal_lahir_edit" name="tanggal_lahir_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="no_hp_wa_edit" class="block text-sm font-bold text-gray-700 mb-1">No. HP/WA:</label>
+          <input type="text" id="no_hp_wa_edit" name="no_hp_wa_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="ukuran_kaos_edit" class="block text-gray-700 text-sm font-bold mb-2">Ukuran Kaos:</label>
-                            <select id="ukuran_kaos_edit" name="ukuran_kaos_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                                <option value="">Pilih</option>
-                                <option value="S">S</option>
-                                <option value="M">M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                                <option value="XXL">XXL</option>
-                            </select>
-                        </div>
+        <div>
+          <label for="agama_edit" class="block text-sm font-bold text-gray-700 mb-1">Agama:</label>
+          <input type="text" id="agama_edit" name="agama_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div>
-                            <label for="kategori_unsur_edit" class="block text-gray-700 text-sm font-bold mb-2">Kategori Unsur:</label>
-                            <input type="text" id="kategori_unsur_edit" name="kategori_unsur_edit" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+        <div>
+          <label for="riwayat_penyakit_edit" class="block text-sm font-bold text-gray-700 mb-1">Riwayat Penyakit:</label>
+          <textarea id="riwayat_penyakit_edit" name="riwayat_penyakit_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none"></textarea>
+        </div>
+      </div>
 
-                        <div>
-                            <label for="golongan_darah_edit" class="block text-gray-700 text-sm font-bold mb-2">Golongan Darah:</label>
-                            <input type="text" id="golongan_darah_edit" name="golongan_darah_edit" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
-                        </div>
+      <!-- Kolom Kanan -->
+      <div class="space-y-4">
+        <div>
+          <label for="tempat_lahir_edit" class="block text-sm font-bold text-gray-700 mb-1">Tempat Lahir:</label>
+          <input type="text" id="tempat_lahir_edit" name="tempat_lahir_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
 
-                        <div class="flex justify-end space-x-2 mt-4">
-                            <button type="submit" name="edit_unsur" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Save Changes</button>
-                            <button type="button" onclick="document.getElementById('editUnsurModal').style.display='none'" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Close</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+        <div>
+          <label for="tanggal_lahir_edit" class="block text-sm font-bold text-gray-700 mb-1">Tanggal Lahir:</label>
+          <input type="date" id="tanggal_lahir_edit" name="tanggal_lahir_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+
+        <div>
+          <label for="ukuran_kaos_edit" class="block text-sm font-bold text-gray-700 mb-1">Ukuran Kaos:</label>
+          <select id="ukuran_kaos_edit" name="ukuran_kaos_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+            <option value="">Pilih</option>
+            <option value="S">S</option>
+            <option value="M">M</option>
+            <option value="L">L</option>
+            <option value="XL">XL</option>
+            <option value="XXL">XXL</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="kategori_unsur_edit" class="block text-sm font-bold text-gray-700 mb-1">Kategori Unsur:</label>
+          <input type="text" id="kategori_unsur_edit" name="kategori_unsur_edit" required
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+
+        <div>
+          <label for="golongan_darah_edit" class="block text-sm font-bold text-gray-700 mb-1">Golongan Darah:</label>
+          <input type="text" id="golongan_darah_edit" name="golongan_darah_edit"
+            class="w-full border rounded px-3 py-2 shadow focus:outline-none">
+        </div>
+      </div>
+
+      <!-- Tombol -->
+      <div class="col-span-1 md:col-span-2 flex justify-end gap-2 pt-4">
+        <button type="submit" name="edit_unsur"
+          class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none">
+          Save Changes
+        </button>
+        <button type="button"
+          onclick="document.getElementById('editUnsurModal').style.display='none'"
+          class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none">
+          Close
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- Edit Form End -->
 
             <div id="uploadBerkasModal" class="modal">
                 <div class="modal-content bg-white m-auto p-8 rounded-lg shadow-lg w-11/12 md:w-1/2 lg:w-1/3">
@@ -513,30 +626,36 @@ async function exportToPDF() {
 </script>
 
 
-    <script>
-        function openEditUnsurModal(data) {
-            document.getElementById('unsur_id_edit').value = data.id;
-            document.getElementById('nama_lengkap_edit').value = data.nama_lengkap;
-            document.getElementById('jenis_kelamin_edit').value = data.jenis_kelamin;
-            document.getElementById('no_hp_wa_edit').value = data.no_hp_wa;
-            document.getElementById('agama_edit').value = data.agama;
-            document.getElementById('riwayat_penyakit_edit').value = data.riwayat_penyakit;
-            document.getElementById('tempat_lahir_edit').value = data.tempat_lahir;
-            document.getElementById('tanggal_lahir_edit').value = data.tanggal_lahir;
-            document.getElementById('ukuran_kaos_edit').value = data.ukuran_kaos;
-            document.getElementById('kategori_unsur_edit').value = data.kategori_unsur;
-            document.getElementById('golongan_darah_edit').value = data.golongan_darah;
-            document.getElementById('editUnsurModal').style.display = 'block';
+  <script>
+    function openEditUnsurModal(data) {
+        document.getElementById('unsur_id_edit').value = data.id;
+        document.getElementById('nama_lengkap_edit').value = data.nama_lengkap;
+        document.getElementById('jenis_kelamin_edit').value = data.jenis_kelamin;
+        document.getElementById('no_hp_wa_edit').value = data.no_hp_wa;
+        document.getElementById('agama_edit').value = data.agama;
+        document.getElementById('riwayat_penyakit_edit').value = data.riwayat_penyakit;
+        document.getElementById('tempat_lahir_edit').value = data.tempat_lahir;
+        document.getElementById('tanggal_lahir_edit').value = data.tanggal_lahir;
+        document.getElementById('ukuran_kaos_edit').value = data.ukuran_kaos;
+        document.getElementById('kategori_unsur_edit').value = data.kategori_unsur;
+        document.getElementById('golongan_darah_edit').value = data.golongan_darah;
+
+        // Tambahkan ini untuk kontingen
+        if (document.getElementById('kontingen_edit')) {
+            document.getElementById('kontingen_edit').value = data.kontingen;
         }
 
-        function openUploadModal(unsurId, fileType) {
-            document.getElementById('upload_unsur_id').value = unsurId;
-            document.getElementById('upload_file_type').value = fileType;
-            // Format judul modal, contoh: "Upload Pas Foto"
-            let title = fileType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            document.getElementById('uploadModalTitle').innerText = 'Upload ' + title;
-            document.getElementById('uploadBerkasModal').style.display = 'block';
-        }
-    </script>
+        document.getElementById('editUnsurModal').style.display = 'block';
+    }
+
+    function openUploadModal(unsurId, fileType) {
+        document.getElementById('upload_unsur_id').value = unsurId;
+        document.getElementById('upload_file_type').value = fileType;
+        let title = fileType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        document.getElementById('uploadModalTitle').innerText = 'Upload ' + title;
+        document.getElementById('uploadBerkasModal').style.display = 'block';
+    }
+</script>
+
 </body>
 </html>

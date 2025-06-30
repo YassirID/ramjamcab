@@ -4,37 +4,38 @@ include('includes/db.php');
 
 $error_message = '';
 
+
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $username = $_POST['username'];  // Diganti dari email ke username
+    $username = $_POST['username'];
     $password = $_POST['password'];
 
-    // Lindungi dari SQL Injection
+    // Hindari SQL Injection
     $username = $conn->real_escape_string($username);
     $sql = "SELECT id, username, password, role FROM users WHERE username = '$username'";
     $result = $conn->query($sql);
 
     if ($result->num_rows > 0) {
         $row = $result->fetch_assoc();
-        // Verifikasi password dengan hash
-        if (password_verify($password, $row['password'])) {
-            $_SESSION['user_id'] = $row['id'];
-            $_SESSION['username'] = $row['username'];
-            $_SESSION['role'] = $row['role'];
 
-            if ($row['role'] == 'pinkoncab') {
-                header("Location: admin/dashboard_pinkoncab.php");
-                exit();
-            } elseif ($row['role'] == 'pinkonran') {
-                header("Location: admin/dashboard_pinkonran.php");
-                exit();
-            }
-        } else {
+if (password_verify($password, $row['password'])) {
+    // Set session
+    $_SESSION['user_id'] = $row['id'];
+    $_SESSION['username'] = $row['username'];
+    $_SESSION['role'] = $row['role'];
+
+    // Arahkan ke satu dashboard utama
+    header("Location: admin/dashboard.php");
+    exit();
+}
+else {
             $error_message = "Password salah.";
         }
     } else {
         $error_message = "Username tidak ditemukan.";
     }
 }
+
 ?>
 
 <!DOCTYPE html>
